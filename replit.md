@@ -1,44 +1,44 @@
-# [Project name]
+# Schess
 
-_Replace the heading above with the project's name, and this line with one sentence describing what this app does for users._
+Ein lokales Zwei-Spieler-Brettspiel mit eigenen Figuren, Zugregeln und Schessmatt.
 
 ## Run & Operate
 
-- `pnpm --filter @workspace/api-server run dev` — run the API server (port 5000)
-- `pnpm run typecheck` — full typecheck across all packages
-- `pnpm run build` — typecheck + build all packages
-- `pnpm --filter @workspace/api-spec run codegen` — regenerate API hooks and Zod schemas from the OpenAPI spec
-- `pnpm --filter @workspace/db run push` — push DB schema changes (dev only)
-- Required env: `DATABASE_URL` — Postgres connection string
+- `pnpm --filter @workspace/schess run dev` — start the Schess web app (managed workflow)
+- `pnpm --filter @workspace/schess run typecheck` — typecheck the game app
+- `pnpm run typecheck` — typecheck all workspace packages
 
 ## Stack
 
 - pnpm workspaces, Node.js 24, TypeScript 5.9
-- API: Express 5
-- DB: PostgreSQL + Drizzle ORM
-- Validation: Zod (`zod/v4`), `drizzle-zod`
-- API codegen: Orval (from OpenAPI spec)
-- Build: esbuild (CJS bundle)
+- Frontend: React, Vite, TypeScript
+- Game state is local to the browser; this app has no backend or database.
 
 ## Where things live
 
-_Populate as you build — short repo map plus pointers to the source-of-truth file for DB schema, API contracts, theme files, etc._
+- `artifacts/schess/src/game/engine.ts` — initial position, legal moves, check, captures, and game endings
+- `artifacts/schess/src/App.tsx` — board interaction, history, capture display, undo, and restart
+- `artifacts/schess/src/index.css` — board and interface styling
 
 ## Architecture decisions
 
-_Populate as you build — non-obvious choices a reader couldn't infer from the code (3-5 bullets)._
+- Game rules are implemented in a deterministic frontend engine; matches are local and are not saved.
+- Coordinates use `file 0 = a`, `rank 0 = rank 1`; the UI displays rank 8 at the top and starts with a1 black.
+- Blue's General is on d1 and Red's on d8 to honor the requested square colors, even though this breaks full rotational symmetry. The Kings face each other on e1/e8.
+- A Soldier moves one square forward; no two-square opening move or promotion rule was specified.
+- A non-King may answer a single Schess by capturing the attacker or blocking a sliding attack; multiple attackers require a King move, and an Aircraft attack cannot be blocked.
 
 ## Product
 
-_Describe the high-level user-facing capabilities of this app once they exist._
+Two players take turns on an 8×8 board. Pieces move by drag-and-drop or tap-to-select, and the game enforces legal moves, Schess, Schessmatt, captures, and King capture.
 
 ## User preferences
 
-_Populate as you build — explicit user instructions worth remembering across sessions._
+The user requested a German-language game called “Schess” with Blue starting, distinct geometric/military piece symbols, and a two-player pass-and-play board.
 
 ## Gotchas
 
-_Populate as you build — sharp edges, "always run X before Y" rules._
+The GameState board is indexed as `board[rank][file]`; keep all movement and check rules in the game engine rather than duplicating them in the UI.
 
 ## Pointers
 

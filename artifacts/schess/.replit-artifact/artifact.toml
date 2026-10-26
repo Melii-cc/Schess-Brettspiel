@@ -1,0 +1,28 @@
+kind = "web"
+previewPath = "/"
+title = "Schess"
+description = "Ein lokales Zwei-Spieler-Brettspiel auf einem 8×8-Feld mit Drag-and-drop, individuellen Figurenbewegungen, Schess und Schessmatt."
+version = "1.0.0"
+id = "artifacts/schess"
+router = "path"
+
+[[services]]
+name = "web"
+paths = [ "/" ]
+localPort = 21957
+
+[services.development]
+run = "pnpm --filter @workspace/schess run dev"
+
+[services.production]
+build = [ "pnpm", "--filter", "@workspace/schess", "run", "build" ]
+serve = "static"
+publicDir = "artifacts/schess/dist/public"
+
+[[services.production.rewrites]]
+from = "/*"
+to = "/index.html"
+
+[services.env]
+PORT = "21957"
+BASE_PATH = "/"
