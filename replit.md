@@ -25,8 +25,10 @@ Ein lokales Zwei-Spieler-Brettspiel mit eigenen Figuren, Zugregeln und Schessmat
 - Game rules are implemented in a deterministic frontend engine; matches are local and are not saved.
 - Coordinates use `file 0 = a`, `rank 0 = rank 1`; the UI displays rank 8 at the top and starts with a1 black.
 - Blue's General is on d1 and Red's on d8 to honor the requested square colors, even though this breaks full rotational symmetry. The Kings face each other on e1/e8.
-- A Soldier moves one square forward; no two-square opening move or promotion rule was specified.
+- A Soldier moves one square forward, or two squares from its starting rank when both squares are clear. An opposing Soldier may capture it en passant on the immediately following turn; no promotion rule is specified.
+- Bunker is the game's castling-like move: an unmoved King moves two squares toward an unmoved Tank on its starting back rank, and that Tank moves to the skipped square. The path must be clear, and the King may not start in Schess, cross an attacked square, or finish in Schess. Either Tank may be used.
 - A non-King may answer a single Schess by capturing the attacker or blocking a sliding attack; multiple attackers require a King move, and an Aircraft attack cannot be blocked.
+- Red piece symbols are rotated 180 degrees so they read upright from Red's side of the physical-device board.
 
 ## Product
 

@@ -26,6 +26,13 @@ export interface MoveRecord {
   from: Square;
   to: Square;
   captured: Piece | null;
+  special?: 'double-step' | 'en-passant' | 'bunker';
+}
+
+export interface EnPassantOpportunity {
+  target: Square;
+  capturedSoldier: Square;
+  eligibleColor: PlayerColor;
 }
 
 export type GameStatus =
@@ -42,6 +49,8 @@ export interface GameState {
   checkedPlayer: PlayerColor | null;
   lastMove: MoveRecord | null;
   history: MoveRecord[];
+  movedPieceIds: string[];
+  enPassant: EnPassantOpportunity | null;
 }
 
 const BOARD_SIZE = 8;
@@ -123,6 +132,8 @@ export function createInitialState(): GameState {
     checkedPlayer: null,
     lastMove: null,
     history: [],
+    movedPieceIds: [],
+    enPassant: null,
   };
 }
 
@@ -253,6 +264,7 @@ export function isInCheck(board: Board, color: PlayerColor): boolean {
 }
 
 function pseudoMoves(
+  state: GameState,
   board: Board,
   piece: Piece,
   from: Square,
@@ -292,6 +304,7 @@ function pseudoMoves(
           rank: from.rank + direction.rank,
         });
       }
+      moves.push(...getBunkerMoves(state, piece, from));
       return moves;
     }
     case 'soldier': {
@@ -300,6 +313,15 @@ function pseudoMoves(
       const forward = { file: from.file, rank: from.rank + direction };
       if (INSIDE_BOARD(forward) && !board[forward.rank]![forward.file]) {
         moves.push(forward);
+        const startingRank = piece.color === 'blue' ? 1 : 6;
+        const twoForward = { file: from.file, rank: from.rank + 2 * direction };
+        if (
+          from.rank === startingRank &&
+          INSIDE_BOARD(twoForward) &&
+          !board[twoForward.rank]![twoForward.file]
+        ) {
+          moves.push(twoForward);
+        }
       }
       for (const fileOffset of [-1, 1]) {
         const target = {
@@ -309,21 +331,116 @@ function pseudoMoves(
         if (!INSIDE_BOARD(target)) continue;
         const occupant = board[target.rank]![target.file];
         if (occupant && occupant.color !== piece.color) moves.push(target);
+        else if (
+          !occupant &&
+          state.enPassant?.eligibleColor === piece.color &&
+          sameSquare(state.enPassant.target, target)
+        ) {
+          const victim = board[state.enPassant.capturedSoldier.rank]?.[
+            state.enPassant.capturedSoldier.file
+          ];
+          if (victim?.color !== piece.color && victim?.type === 'soldier') {
+            moves.push(target);
+          }
+        }
       }
       return moves;
     }
   }
 }
 
+type SpecialMove =
+  | { type: 'bunker'; tankFrom: Square }
+  | { type: 'en-passant'; capturedSoldier: Square }
+  | { type: 'double-step' };
+
+function specialMoveFor(
+  state: GameState,
+  piece: Piece,
+  from: Square,
+  to: Square,
+): SpecialMove | null {
+  if (piece.type === 'king' && Math.abs(to.file - from.file) === 2) {
+    return {
+      type: 'bunker',
+      tankFrom: { file: to.file < from.file ? 0 : BOARD_SIZE - 1, rank: from.rank },
+    };
+  }
+  if (
+    piece.type === 'soldier' &&
+    from.file !== to.file &&
+    !state.board[to.rank]![to.file] &&
+    state.enPassant?.eligibleColor === piece.color &&
+    sameSquare(state.enPassant.target, to)
+  ) {
+    return { type: 'en-passant', capturedSoldier: state.enPassant.capturedSoldier };
+  }
+  if (piece.type === 'soldier' && Math.abs(to.rank - from.rank) === 2) {
+    return { type: 'double-step' };
+  }
+  return null;
+}
+
 function boardAfterMove(
   board: Board,
   from: Square,
   to: Square,
+  special: SpecialMove | null = null,
 ): Board {
   const nextBoard = cloneBoard(board);
   nextBoard[to.rank]![to.file] = nextBoard[from.rank]![from.file]!;
   nextBoard[from.rank]![from.file] = null;
+  if (special?.type === 'bunker') {
+    const tank = nextBoard[special.tankFrom.rank]![special.tankFrom.file];
+    nextBoard[special.tankFrom.rank]![special.tankFrom.file] = null;
+    nextBoard[from.rank]![from.file + Math.sign(to.file - from.file)] = tank;
+  } else if (special?.type === 'en-passant') {
+    nextBoard[special.capturedSoldier.rank]![special.capturedSoldier.file] = null;
+  }
   return nextBoard;
+}
+
+function getBunkerMoves(state: GameState, king: Piece, from: Square): Square[] {
+  if (king.type !== 'king' || state.movedPieceIds.includes(king.id)) return [];
+  const moves: Square[] = [];
+  for (const tankFile of [0, BOARD_SIZE - 1]) {
+    const tankSquare = { file: tankFile, rank: from.rank };
+    const tank = state.board[tankSquare.rank]![tankSquare.file];
+    if (
+      tank?.color !== king.color ||
+      tank.type !== 'tank' ||
+      state.movedPieceIds.includes(tank.id)
+    ) {
+      continue;
+    }
+    const direction = Math.sign(tankFile - from.file);
+    if (!direction) continue;
+    let clear = true;
+    for (let file = from.file + direction; file !== tankFile; file += direction) {
+      if (state.board[from.rank]![file]) {
+        clear = false;
+        break;
+      }
+    }
+    const target = { file: from.file + 2 * direction, rank: from.rank };
+    if (clear && INSIDE_BOARD(target)) moves.push(target);
+  }
+  return moves;
+}
+
+function canBunkerSafely(
+  state: GameState,
+  from: Square,
+  to: Square,
+  special: SpecialMove | null,
+): boolean {
+  if (special?.type !== 'bunker') return true;
+  const king = state.board[from.rank]![from.file];
+  if (!king || isInCheck(state.board, king.color)) return false;
+  const transit = { file: from.file + Math.sign(to.file - from.file), rank: from.rank };
+  const transitBoard = boardAfterMove(state.board, from, transit);
+  if (isInCheck(transitBoard, king.color)) return false;
+  return !isInCheck(boardAfterMove(state.board, from, to, special), king.color);
 }
 
 function isBetween(
@@ -361,11 +478,13 @@ export function getLegalMoves(state: GameState, from: Square): Square[] {
     otherColor(piece.color),
   );
 
-  return pseudoMoves(state.board, piece, from).filter((to) => {
+  return pseudoMoves(state, state.board, piece, from).filter((to) => {
     // With two or more simultaneous attackers, only the king may move.
     if (checkers.length > 1 && piece.type !== 'king') return false;
 
-    const nextBoard = boardAfterMove(state.board, from, to);
+    const special = specialMoveFor(state, piece, from, to);
+    if (!canBunkerSafely(state, from, to, special)) return false;
+    const nextBoard = boardAfterMove(state.board, from, to, special);
     const nextKing =
       piece.type === 'king' ? to : findKing(nextBoard, piece.color);
     if (!nextKing || isInCheck(nextBoard, piece.color)) return false;
@@ -381,7 +500,10 @@ export function getLegalMoves(state: GameState, from: Square): Square[] {
         checker.piece.type === 'general';
       const blocksSlider =
         isSlider && isBetween(to, checker.square, king);
-      if (!capturesChecker && !blocksSlider) return false;
+      const capturesEnPassantChecker =
+        special?.type === 'en-passant' &&
+        sameSquare(special.capturedSoldier, checker.square);
+      if (!capturesChecker && !capturesEnPassantChecker && !blocksSlider) return false;
     }
 
     return true;
@@ -422,14 +544,19 @@ export function makeMove(
     return state;
   }
 
-  const captured = state.board[to.rank]![to.file];
+  const special = specialMoveFor(state, piece, from, to);
+  const captured =
+    special?.type === 'en-passant'
+      ? state.board[special.capturedSoldier.rank]![special.capturedSoldier.file]
+      : state.board[to.rank]![to.file];
   const record: MoveRecord = {
     piece,
     from: { ...from },
     to: { ...to },
     captured,
+    ...(special ? { special: special.type } : {}),
   };
-  const board = boardAfterMove(state.board, from, to);
+  const board = boardAfterMove(state.board, from, to, special);
 
   if (captured?.type === 'king') {
     return {
@@ -445,6 +572,14 @@ export function makeMove(
 
   const nextTurn = otherColor(state.turn);
   const checkedPlayer = isInCheck(board, nextTurn) ? nextTurn : null;
+  const enPassant =
+    special?.type === 'double-step'
+      ? {
+          target: { file: to.file, rank: (from.rank + to.rank) / 2 },
+          capturedSoldier: { ...to },
+          eligibleColor: nextTurn,
+        }
+      : null;
   const nextState: GameState = {
     ...state,
     board,
@@ -454,6 +589,10 @@ export function makeMove(
     checkedPlayer,
     lastMove: record,
     history: [...state.history, record],
+    movedPieceIds: state.movedPieceIds.includes(piece.id)
+      ? state.movedPieceIds
+      : [...state.movedPieceIds, piece.id],
+    enPassant,
   };
   const hasMoves = allLegalMoves(nextState, nextTurn).length > 0;
 

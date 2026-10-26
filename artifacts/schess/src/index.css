@@ -188,6 +188,7 @@
 .piece-token.blue { color:#245c92; }
 .piece-token.red { color:#bd4936; }
 .piece-glyph { width:72%; height:72%; position:relative; fill:none; stroke:currentColor; stroke-width:1.7; stroke-linecap:round; stroke-linejoin:round; }
+.piece-token.red .piece-glyph { transform:rotate(180deg); }
 .piece-glyph .solid { fill:currentColor; stroke:none; }
 .piece-type-label { position:absolute; bottom:-2px; transform:translateY(50%); font:600 8px var(--app-font-mono); color:#fffdf6; background:#343943; padding:1px 4px; border-radius:3px; letter-spacing:.04em; white-space:nowrap; }
 .file-labels { display:grid; grid-template-columns:repeat(8,1fr); color:#d9cfb9; text-align:center; font:10px var(--app-font-mono); letter-spacing:.06em; margin-top:8px; }
@@ -217,6 +218,7 @@
 .move-number { color:#999386; font:10px var(--app-font-mono); }
 .move-entry { display:flex; align-items:center; gap:6px; white-space:nowrap; }
 .move-entry.current { font-weight:700; }
+.move-special { display:inline-block; margin-left:5px; color:#83704b; font:9px var(--app-font-mono); }
 .move-color { width:7px; height:7px; border-radius:50%; background:#245c92; }
 .move-color.red { background:#bd4936; }
 .empty-history { text-align:center; padding:25px 15px 27px; color:#898477; font-size:11px; line-height:1.5; }
@@ -255,6 +257,7 @@
  .piece-token { width:80%; height:80%; }
  .piece-type-label { display:none; }
  .coord { font-size:7px; }
+  .board-caption { flex-direction:column; justify-content:center; gap:6px; text-align:center; }
  .side-panel { grid-template-columns:1fr; }
  .panel.history-panel { grid-column:auto; }
 }

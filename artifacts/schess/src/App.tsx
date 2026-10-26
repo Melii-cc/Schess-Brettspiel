@@ -63,6 +63,15 @@ function statusCopy(state: GameState) {
   return state.checkedPlayer ? `${state.checkedPlayer === 'blue' ? 'Blau' : 'Rot'} steht unter Schess` : 'Partie läuft';
 }
 
+function specialMoveLabel(
+  special: 'double-step' | 'en-passant' | 'bunker' | undefined,
+) {
+  if (special === 'bunker') return 'Bunker';
+  if (special === 'en-passant') return 'en passant';
+  if (special === 'double-step') return 'Doppelschritt';
+  return null;
+}
+
 function App() {
   const [game, setGame] = useState<GameState>(() => createInitialState());
   const [undoStack, setUndoStack] = useState<GameState[]>([]);
@@ -290,7 +299,11 @@ function App() {
                         {[blueMove, redMove].map((move, slot) => move ? (
                           <span className={`move-entry ${pairIndex === Math.floor((history.length - 1) / 2) && ((history.length - 1) % 2) === slot ? 'current' : ''}`} key={`${move.piece.id}-${slot}`}>
                             <i className={`move-color ${move.piece.color}`} aria-hidden="true" />
-                            <span>{pieceShort[move.piece.type]} {squareName(move.from)}–{squareName(move.to)}{move.captured ? ' ×' : ''}</span>
+                            <span>
+                              {pieceShort[move.piece.type]} {squareName(move.from)}–{squareName(move.to)}
+                              {move.captured ? ' ×' : ''}
+                              {move.special && <small className="move-special">{specialMoveLabel(move.special)}</small>}
+                            </span>
                           </span>
                         ) : <span key="waiting" />)}
                       </div>
@@ -310,7 +323,11 @@ function App() {
                 <div className="panel-title">Spielregeln</div>
                 <div className="panel-kicker">Kurz erklärt</div>
               </div>
-              <div className="rules-strip"><strong>Panzer</strong> zieht waagerecht und senkrecht, <strong>Artillerie</strong> diagonal. Der <strong>General</strong> kombiniert beide. Das <strong>Flugzeug</strong> springt im L. Der <strong>König</strong> zieht ein Feld; der <strong>Soldat</strong> geht vorwärts und schlägt diagonal. Bei Schess muss der König geschützt werden. Eine Figur antippen, um erlaubte Züge zu sehen.</div>
+              <div className="rules-strip">
+                <strong>Panzer</strong> zieht waagerecht und senkrecht, <strong>Artillerie</strong> diagonal. Der <strong>General</strong> kombiniert beide. Das <strong>Flugzeug</strong> springt im L. Der <strong>König</strong> zieht ein Feld; der <strong>Soldat</strong> geht vorwärts und schlägt diagonal. Vom Startfeld darf ein Soldat zwei Felder ziehen. Direkt danach kann ein benachbarter Soldat ihn <strong>en passant</strong> schlagen.
+                <br /><br />
+                <strong>Bunker:</strong> Der König zieht zwei Felder zu einem ungezogenen Panzer, der auf das übersprungene Feld rückt. Der Weg muss frei sein; der König darf weder im Schess stehen noch über ein angegriffenes Feld ziehen oder auf einem angegriffenen Feld landen. Bei Schess muss der König geschützt werden. Figuren lassen sich ziehen oder antippen, um erlaubte Züge zu sehen.
+              </div>
             </section>
           </aside>
         </div>
