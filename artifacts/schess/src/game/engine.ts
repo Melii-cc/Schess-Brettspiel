@@ -27,6 +27,7 @@ export interface MoveRecord {
   to: Square;
   captured: Piece | null;
   special?: 'double-step' | 'en-passant' | 'bunker';
+  promotion?: Exclude<PieceType, 'king' | 'soldier'>;
 }
 
 export interface EnPassantOpportunity {
@@ -35,25 +36,43 @@ export interface EnPassantOpportunity {
   eligibleColor: PlayerColor;
 }
 
+export type DrawReason =
+  | 'stalemate'
+  | 'agreement'
+  | 'repetition'
+  | 'fifty-move'
+  | 'insufficient-material';
+
 export type GameStatus =
   | 'playing'
   | 'checkmate'
   | 'king-captured'
-  | 'stalemate';
+  | 'resignation'
+  | 'draw';
 
 export interface GameState {
   board: Board;
   turn: PlayerColor;
   status: GameStatus;
   winner: PlayerColor | null;
+  drawReason: DrawReason | null;
   checkedPlayer: PlayerColor | null;
   lastMove: MoveRecord | null;
   history: MoveRecord[];
   movedPieceIds: string[];
   enPassant: EnPassantOpportunity | null;
+  halfMoveClock: number;
+  positionHistory: string[];
 }
 
 const BOARD_SIZE = 8;
+
+export const PROMOTION_TYPES: Exclude<PieceType, 'king' | 'soldier'>[] = [
+  'general',
+  'tank',
+  'aircraft',
+  'artillery',
+];
 
 const DIRECTIONS = {
   orthogonal: [
@@ -92,6 +111,32 @@ const otherColor = (color: PlayerColor): PlayerColor =>
 const cloneBoard = (board: Board): Board =>
   board.map((row) => row.slice());
 
+function positionSignature(state: GameState): string {
+  const pieces = state.board
+    .flatMap((row, rank) =>
+      row.map((piece, file) =>
+        piece ? `${piece.color[0]}:${piece.type}:${file},${rank}` : '',
+      ),
+    )
+    .filter(Boolean)
+    .join(',');
+  const originalKingAndTankIds = [
+    'blue-king-4-0',
+    'blue-tank-0-0',
+    'blue-tank-7-0',
+    'red-king-4-7',
+    'red-tank-0-7',
+    'red-tank-7-7',
+  ];
+  const bunkerRights = originalKingAndTankIds
+    .map((id) => (state.movedPieceIds.includes(id) ? '1' : '0'))
+    .join('');
+  const enPassant = state.enPassant
+    ? `${state.enPassant.eligibleColor}:${state.enPassant.target.file},${state.enPassant.target.rank}`
+    : '-';
+  return `${pieces}|${state.turn}|${bunkerRights}|${enPassant}`;
+}
+
 function place(
   board: Board,
   color: PlayerColor,
@@ -124,17 +169,22 @@ export function createInitialState(): GameState {
     place(board, 'red', 'soldier', file, 6);
   }
 
-  return {
+  const state: GameState = {
     board,
     turn: 'blue',
     status: 'playing',
     winner: null,
+    drawReason: null,
     checkedPlayer: null,
     lastMove: null,
     history: [],
     movedPieceIds: [],
     enPassant: null,
+    halfMoveClock: 0,
+    positionHistory: [],
   };
+  state.positionHistory = [positionSignature(state)];
+  return state;
 }
 
 function findKing(board: Board, color: PlayerColor): Square | null {
@@ -527,10 +577,63 @@ function allLegalMoves(state: GameState, color: PlayerColor) {
   return moves;
 }
 
+function hasThreefoldRepetition(positionHistory: string[]): boolean {
+  const latestIndex = positionHistory.length - 1;
+  const current = positionHistory[latestIndex];
+  if (!current) return false;
+  const occurrences = positionHistory.flatMap((position, index) =>
+    position === current ? [index] : [],
+  );
+  if (occurrences.length < 3) return false;
+  const lastThree = occurrences.slice(-3);
+  const firstGap = lastThree[1]! - lastThree[0]!;
+  const secondGap = lastThree[2]! - lastThree[1]!;
+  // Equal gaps of 2–10 half-moves mean one to five complete rounds.
+  return firstGap === secondGap && firstGap >= 2 && firstGap <= 10;
+}
+
+function isInsufficientMaterial(board: Board): boolean {
+  const remaining = board.flat().filter((piece): piece is Piece => !!piece);
+  if (remaining.some((piece) =>
+    piece.type === 'soldier' || piece.type === 'tank' || piece.type === 'general',
+  )) {
+    return false;
+  }
+  const nonKings = remaining.filter((piece) => piece.type !== 'king');
+  return nonKings.length === 2 && nonKings.every((piece) => piece.type === 'aircraft');
+}
+
+function finishAsDraw(state: GameState, drawReason: DrawReason): GameState {
+  return {
+    ...state,
+    status: 'draw',
+    drawReason,
+    winner: null,
+    checkedPlayer: null,
+  };
+}
+
+export function acceptDraw(state: GameState): GameState {
+  if (state.status !== 'playing') return state;
+  return finishAsDraw(state, 'agreement');
+}
+
+export function resignGame(state: GameState, resigningPlayer: PlayerColor): GameState {
+  if (state.status !== 'playing') return state;
+  return {
+    ...state,
+    status: 'resignation',
+    drawReason: null,
+    winner: otherColor(resigningPlayer),
+    checkedPlayer: null,
+  };
+}
+
 export function makeMove(
   state: GameState,
   from: Square,
   to: Square,
+  promotion?: Exclude<PieceType, 'king' | 'soldier'>,
 ): GameState {
   if (state.status !== 'playing') return state;
   const piece = INSIDE_BOARD(from)
@@ -544,6 +647,16 @@ export function makeMove(
     return state;
   }
 
+  const targetPiece = state.board[to.rank]![to.file];
+  const reachesLastRank =
+    piece.type === 'soldier' &&
+    ((piece.color === 'blue' && to.rank === BOARD_SIZE - 1) ||
+      (piece.color === 'red' && to.rank === 0));
+  const capturesKing = targetPiece?.type === 'king';
+  if (reachesLastRank && !capturesKing && !promotion) return state;
+  if ((!reachesLastRank || capturesKing) && promotion) return state;
+  if (promotion && !PROMOTION_TYPES.includes(promotion)) return state;
+
   const special = specialMoveFor(state, piece, from, to);
   const captured =
     special?.type === 'en-passant'
@@ -555,8 +668,16 @@ export function makeMove(
     to: { ...to },
     captured,
     ...(special ? { special: special.type } : {}),
+    ...(promotion ? { promotion } : {}),
   };
   const board = boardAfterMove(state.board, from, to, special);
+  if (promotion) {
+    board[to.rank]![to.file] = {
+      id: `${piece.id}-promotion-${promotion}`,
+      color: piece.color,
+      type: promotion,
+    };
+  }
 
   if (captured?.type === 'king') {
     return {
@@ -564,9 +685,13 @@ export function makeMove(
       board,
       status: 'king-captured',
       winner: piece.color,
+      drawReason: null,
       checkedPlayer: null,
       lastMove: record,
       history: [...state.history, record],
+      movedPieceIds: state.movedPieceIds.includes(piece.id)
+        ? state.movedPieceIds
+        : [...state.movedPieceIds, piece.id],
     };
   }
 
@@ -586,6 +711,7 @@ export function makeMove(
     turn: nextTurn,
     status: 'playing',
     winner: null,
+    drawReason: null,
     checkedPlayer,
     lastMove: record,
     history: [...state.history, record],
@@ -593,7 +719,12 @@ export function makeMove(
       ? state.movedPieceIds
       : [...state.movedPieceIds, piece.id],
     enPassant,
+    halfMoveClock: captured || promotion ? 0 : state.halfMoveClock + 1,
   };
+  nextState.positionHistory = [
+    ...state.positionHistory,
+    positionSignature(nextState),
+  ];
   const hasMoves = allLegalMoves(nextState, nextTurn).length > 0;
 
   if (!hasMoves && checkedPlayer) {
@@ -604,7 +735,16 @@ export function makeMove(
     };
   }
   if (!hasMoves) {
-    return { ...nextState, status: 'stalemate' };
+    return finishAsDraw(nextState, 'stalemate');
+  }
+  if (isInsufficientMaterial(board)) {
+    return finishAsDraw(nextState, 'insufficient-material');
+  }
+  if (hasThreefoldRepetition(nextState.positionHistory)) {
+    return finishAsDraw(nextState, 'repetition');
+  }
+  if (nextState.halfMoveClock >= 100) {
+    return finishAsDraw(nextState, 'fifty-move');
   }
   return nextState;
 }
