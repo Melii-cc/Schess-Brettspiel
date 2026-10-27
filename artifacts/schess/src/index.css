@@ -338,7 +338,7 @@
 .result-restart { padding:9px 13px; }
 .draw-overlay { position:absolute; z-index:6; inset:clamp(11px,1.7vw,19px); display:grid; place-items:center; background:rgba(15,27,30,.22); }
 .draw-message { width:min(84%,390px); padding:22px 23px; text-align:center; color:#f9f1dd; border:1px solid rgba(249,241,221,.65); background:rgba(28,43,47,.78); box-shadow:0 12px 35px rgba(0,0,0,.2); backdrop-filter:blur(3px); }
-.draw-overlay.to-red .draw-message { transform:rotate(180deg); }
+.draw-overlay.to-black .draw-message { transform:rotate(180deg); }
 .draw-emblem { display:block; font:40px/1 var(--app-font-serif); color:#efcf83; }
 .draw-overline { margin:8px 0 0!important; font:9px var(--app-font-mono)!important; text-transform:uppercase; letter-spacing:.14em; }
 .draw-message h2 { margin:3px 0 4px; font:700 28px var(--app-font-serif); }
@@ -403,4 +403,77 @@
  .promotion-options { gap:5px; }
  .promotion-option { min-height:92px; font-size:10px; }
  .promotion-option img { width:43px;height:43px; }
+}
+
+/* Player-facing controls and mirrored tabletop information */
+.piece-token img {
+  image-rendering:auto;
+  filter:drop-shadow(0 2px 2px rgba(24,29,31,.3));
+}
+.piece-token.red img,.captured-piece.red img { transform:rotate(180deg); }
+.player-actions.red { transform:rotate(180deg); }
+.action-buttons { flex-wrap:wrap; justify-content:flex-end; }
+.takeback-button { color:#365966; }
+.takeback-button svg,.takeback-emblem svg {
+  width:18px;
+  height:16px;
+  fill:none;
+  stroke:currentColor;
+  stroke-width:2;
+  stroke-linecap:round;
+  stroke-linejoin:round;
+}
+.half-image.red .half-image-title { transform:rotate(180deg); }
+.side-perspective { display:flex; flex-direction:column; gap:13px; }
+.black-perspective { transform:rotate(180deg); }
+.material-panel { overflow:hidden; }
+.captured-player { padding:0 14px 9px; }
+.captured-player-head { display:flex; align-items:center; justify-content:space-between; gap:8px; }
+.captured-player-head .player-name-wrap { min-width:0; flex-wrap:wrap; }
+.captured-player-head .player-name { font:700 11px var(--app-font-sans); }
+.captured-player-head .player-turn,.captured-player-head .status-pill { font-size:8px; }
+.material-advantage { color:#34704e; font:700 14px var(--app-font-mono); }
+.captured-row {
+  display:flex;
+  align-items:center;
+  flex-wrap:wrap;
+  gap:4px;
+  margin:4px 0 0 29px;
+  min-height:30px;
+}
+.captured-piece {
+  display:grid;
+  place-items:center;
+  width:27px;
+  height:30px;
+  padding:0;
+  border:0;
+  background:transparent;
+}
+.captured-piece img { width:100%; height:100%; object-fit:contain; }
+.empty-captured { color:#a5a092; font:12px var(--app-font-mono); }
+.rules-panel .rules-strip { padding-top:0; line-height:1.6; }
+.draw-overlay.to-white .draw-message { transform:none; }
+.takeback-emblem { display:grid; place-items:center; width:44px; height:38px; margin:0 auto; color:#efcf83; }
+.takeback-emblem svg { width:40px; height:32px; }
+.confirm-dialog.black-facing,.promotion-dialog.black-facing {
+  animation:enter-black .18s ease-out both;
+}
+@keyframes enter-black {
+  from { opacity:0; transform:translateY(7px) rotate(180deg); }
+  to { opacity:1; transform:rotate(180deg); }
+}
+@media(max-width:700px) {
+  .side-panel { display:flex; flex-direction:column; }
+  .side-perspective { display:grid; grid-template-columns:1fr 1fr; align-items:start; }
+  .history-panel { grid-column:auto; }
+  .player-actions { flex-wrap:wrap; }
+  .action-player { flex:1 1 auto; }
+  .action-buttons { width:100%; display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:5px; }
+  .action-button { justify-content:center; padding:7px 5px; }
+}
+@media(max-width:430px) {
+  .side-perspective { grid-template-columns:1fr; }
+  .action-button { gap:4px; padding:7px 3px; font-size:9px; }
+  .takeback-button svg { width:15px; }
 }
