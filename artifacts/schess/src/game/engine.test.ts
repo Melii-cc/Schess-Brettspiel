@@ -6,6 +6,7 @@ import {
   getLegalMoves,
   makeMove,
   resignGame,
+  timeoutGame,
   type GameState,
   type PieceType,
   type PlayerColor,
@@ -223,4 +224,7 @@ test('draw acceptance and resignation set the correct result', () => {
   assert.equal(acceptDraw(state).drawReason, 'agreement');
   assert.equal(resignGame(state, 'blue').winner, 'red');
   assert.equal(resignGame(state, 'blue').status, 'resignation');
+  assert.equal(timeoutGame(state, 'blue').status, 'timeout');
+  assert.equal(timeoutGame(state, 'blue').winner, 'red');
+  assert.equal(timeoutGame({ ...state, turn: 'red' }, 'blue').status, 'playing');
 });

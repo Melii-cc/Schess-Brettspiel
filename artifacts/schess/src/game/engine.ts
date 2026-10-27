@@ -48,6 +48,7 @@ export type GameStatus =
   | 'checkmate'
   | 'king-captured'
   | 'resignation'
+  | 'timeout'
   | 'draw';
 
 export interface GameState {
@@ -625,6 +626,17 @@ export function resignGame(state: GameState, resigningPlayer: PlayerColor): Game
     status: 'resignation',
     drawReason: null,
     winner: otherColor(resigningPlayer),
+    checkedPlayer: null,
+  };
+}
+
+export function timeoutGame(state: GameState, timedOutPlayer: PlayerColor): GameState {
+  if (state.status !== 'playing' || state.turn !== timedOutPlayer) return state;
+  return {
+    ...state,
+    status: 'timeout',
+    drawReason: null,
+    winner: otherColor(timedOutPlayer),
     checkedPlayer: null,
   };
 }

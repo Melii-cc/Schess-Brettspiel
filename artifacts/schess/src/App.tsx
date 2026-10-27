@@ -1,11 +1,12 @@
-import { useCallback, useMemo, useState, type DragEvent } from 'react';
-import { Flag, RotateCcw, Check, X } from 'lucide-react';
+import { useCallback, useEffect, useMemo, useRef, useState, type DragEvent } from 'react';
+import { Flag, RotateCcw, Check, X, Clock } from 'lucide-react';
 import {
   createInitialState,
   getLegalMoves,
   makeMove,
   acceptDraw,
   resignGame,
+  timeoutGame,
   PROMOTION_TYPES,
   type GameState,
   type Piece,
@@ -19,9 +20,6 @@ const pieceNames: Record<PieceType, string> = {
   tank: 'Turm', aircraft: 'Springer', artillery: 'Läufer',
   general: 'Dame', king: 'König', soldier: 'Bauer',
 };
-const pieceShort: Record<PieceType, string> = {
-  tank: 'TU', aircraft: 'SP', artillery: 'LÄ', general: 'DA', king: 'KÖ', soldier: 'BA',
-};
 const pieceValues: Record<PieceType, number> = {
   soldier: 1, aircraft: 3, artillery: 3, tank: 5, general: 9, king: 0,
 };
@@ -30,6 +28,21 @@ const labelColor = (color: PlayerColor) => color === 'blue' ? 'Weiß' : 'Schwarz
 const opposite = (color: PlayerColor): PlayerColor => color === 'blue' ? 'red' : 'blue';
 const squareKey = (square: Square) => `${square.file},${square.rank}`;
 const squareName = (square: Square) => `${files[square.file]}${square.rank + 1}`;
+type TimeControl = { initialMinutes: number; incrementSeconds: number };
+type ClockTimes = Record<PlayerColor, number>;
+const timePresets = [
+  { minutes: 1, symbol: '🔫', name: 'Kugel' },
+  { minutes: 3, symbol: '⚡', name: 'Blitz' },
+  { minutes: 5, symbol: '🐇', name: 'Hase' },
+  { minutes: 10, symbol: '🏃', name: 'Läufer' },
+  { minutes: 50, symbol: '🐢', name: 'Schildkröte' },
+  { minutes: 100, symbol: '🥱', name: 'Gähnen' },
+];
+
+function formatClock(milliseconds: number) {
+  const totalSeconds = Math.ceil(Math.max(0, milliseconds) / 1000);
+  return `${Math.floor(totalSeconds / 60)}:${String(totalSeconds % 60).padStart(2, '0')}`;
+}
 
 function TakebackArrow() {
   return (
@@ -44,15 +57,9 @@ function statusCopy(state: GameState) {
   if (state.status === 'checkmate') return `Schessmatt — ${labelColor(state.winner!)} gewinnt`;
   if (state.status === 'king-captured') return `König geschlagen — ${labelColor(state.winner!)} gewinnt`;
   if (state.status === 'resignation') return `Aufgabe — ${labelColor(state.winner!)} gewinnt`;
+  if (state.status === 'timeout') return `Zeit abgelaufen — ${labelColor(state.winner!)} gewinnt`;
   if (state.status === 'draw') return state.drawReason === 'stalemate' ? 'Patt — Remis' : 'Remis';
   return state.checkedPlayer ? `${labelColor(state.checkedPlayer)} steht unter Schess` : 'Partie läuft';
-}
-
-function specialMoveLabel(special: 'double-step' | 'en-passant' | 'bunker' | undefined) {
-  if (special === 'bunker') return 'Bunker';
-  if (special === 'en-passant') return 'en passant';
-  if (special === 'double-step') return 'Doppelschritt';
-  return null;
 }
 
 interface CapturedPanelProps {
@@ -108,20 +115,6 @@ function CapturedPanel({
   );
 }
 
-function RulesPanel({ view }: { view: 'black' | 'white' }) {
-  return (
-    <section className="panel rules-panel" aria-label={`Spielregeln aus Sicht von ${view === 'black' ? 'Schwarz' : 'Weiß'}`} data-testid={`rules-${view}`}>
-      <div className="panel-head"><div className="panel-title">Spielregeln</div><div className="panel-kicker">Kurz erklärt</div></div>
-      <div className="rules-strip">
-        <strong>Turm</strong> zieht waagerecht und senkrecht, <strong>Läufer</strong> diagonal. Die <strong>Dame</strong> kombiniert beide. Der <strong>Springer</strong> springt im L. Der <strong>König</strong> zieht ein Feld; der <strong>Bauer</strong> geht vorwärts und schlägt diagonal.
-        <br /><br />Vom Startfeld darf ein Bauer zwei Felder ziehen. Direkt danach kann ihn ein benachbarter Bauer <strong>en passant</strong> schlagen.
-        <br /><br /><strong>Bunker:</strong> Der König zieht zwei Felder zu einem ungezogenen Turm, der auf das übersprungene Feld rückt. Der Weg muss frei sein; der König darf weder im Schess stehen noch über ein angegriffenes Feld ziehen oder auf einem angegriffenen Feld landen.
-        <br /><br />Bei <strong>Schess</strong> muss der König geschützt werden. Patt, dreifache Stellungswiederholung, die 50-Züge-Regel, unzureichendes Material oder eine Einigung führen zum Remis.
-      </div>
-    </section>
-  );
-}
-
 function App() {
   const [game, setGame] = useState<GameState>(() => createInitialState());
   const [undoStack, setUndoStack] = useState<GameState[]>([]);
@@ -133,6 +126,17 @@ function App() {
   const [takebackOffer, setTakebackOffer] = useState<PlayerColor | null>(null);
   const [resigning, setResigning] = useState<PlayerColor | null>(null);
   const [promotion, setPromotion] = useState<{ from: Square; to: Square; color: PlayerColor } | null>(null);
+  const [timeControl, setTimeControl] = useState<TimeControl | null>(null);
+  const [clockTimes, setClockTimes] = useState<ClockTimes>({ blue: 0, red: 0 });
+  const clockTimesRef = useRef(clockTimes);
+  const [clockSnapshots, setClockSnapshots] = useState<ClockTimes[]>([]);
+  const [clockDialogOpen, setClockDialogOpen] = useState(false);
+  const [draftMinutes, setDraftMinutes] = useState(5);
+  const [draftIncrement, setDraftIncrement] = useState(0);
+  const updateClockTimes = useCallback((next: ClockTimes) => {
+    clockTimesRef.current = next;
+    setClockTimes(next);
+  }, []);
 
   const legalKeys = useMemo(() => new Set(legalDestinations.map(squareKey)), [legalDestinations]);
   const history = game.history;
@@ -164,13 +168,40 @@ function App() {
   const finished = game.status !== 'playing';
   const locked = !started || finished || !!drawOffer || !!takebackOffer || !!promotion;
 
+  useEffect(() => {
+    if (!timeControl || !started || finished || drawOffer || takebackOffer || resigning || clockDialogOpen) return;
+    const activeColor = game.turn;
+    let lastTick = performance.now();
+    const interval = window.setInterval(() => {
+      const now = performance.now();
+      const elapsed = now - lastTick;
+      lastTick = now;
+      const current = clockTimesRef.current;
+      const nextTime = Math.max(0, current[activeColor] - elapsed);
+      updateClockTimes({ ...current, [activeColor]: nextTime });
+      if (nextTime === 0) {
+        window.clearInterval(interval);
+        setGame((state) => timeoutGame(state, activeColor));
+      }
+    }, 200);
+    return () => window.clearInterval(interval);
+  }, [timeControl, started, finished, game.turn, drawOffer, takebackOffer, resigning, clockDialogOpen, updateClockTimes]);
+
   const finishMove = useCallback((from: Square, to: Square, chosen?: Exclude<PieceType, 'king' | 'soldier'>) => {
+    if (timeControl) {
+      const beforeMove = { ...clockTimesRef.current };
+      setClockSnapshots((snapshots) => [...snapshots, beforeMove]);
+      updateClockTimes({
+        ...beforeMove,
+        [game.turn]: beforeMove[game.turn] + timeControl.incrementSeconds * 1000,
+      });
+    }
     setUndoStack((previous) => [...previous, game]);
     setGame(makeMove(game, from, to, chosen));
     setSelected(null);
     setLegalDestinations([]);
     setPromotion(null);
-  }, [game]);
+  }, [game, timeControl, updateClockTimes]);
 
   const commitMove = useCallback((from: Square, to: Square) => {
     if (locked || !getLegalMoves(game, from).some((destination) => squareKey(destination) === squareKey(to))) return;
@@ -219,6 +250,10 @@ function App() {
     setTakebackOffer(null);
     setPromotion(null);
     setResigning(null);
+    setClockSnapshots([]);
+    updateClockTimes(timeControl
+      ? { blue: timeControl.initialMinutes * 60_000, red: timeControl.initialMinutes * 60_000 }
+      : { blue: 0, red: 0 });
     setStarted(true);
   };
 
@@ -226,6 +261,9 @@ function App() {
     if (!takebackOffer || !undoStack.length) return;
     setGame(undoStack[undoStack.length - 1]!);
     setUndoStack((stack) => stack.slice(0, -1));
+    const clockBeforeLastMove = clockSnapshots[clockSnapshots.length - 1];
+    if (clockBeforeLastMove && timeControl) updateClockTimes({ ...clockBeforeLastMove });
+    setClockSnapshots((snapshots) => snapshots.slice(0, -1));
     setTakebackOffer(null);
     setSelected(null);
     setLegalDestinations([]);
@@ -259,6 +297,30 @@ function App() {
     setLegalDestinations([]);
   };
 
+  const openClockSettings = () => {
+    setDraftMinutes(timeControl?.initialMinutes ?? 5);
+    setDraftIncrement(timeControl?.incrementSeconds ?? 0);
+    setClockDialogOpen(true);
+  };
+
+  const applyClockSettings = () => {
+    const nextControl = { initialMinutes: draftMinutes, incrementSeconds: draftIncrement };
+    setTimeControl(nextControl);
+    updateClockTimes({
+      blue: nextControl.initialMinutes * 60_000,
+      red: nextControl.initialMinutes * 60_000,
+    });
+    setClockSnapshots([]);
+    setClockDialogOpen(false);
+  };
+
+  const removeClock = () => {
+    setTimeControl(null);
+    updateClockTimes({ blue: 0, red: 0 });
+    setClockSnapshots([]);
+    setClockDialogOpen(false);
+  };
+
   const actionBar = (color: PlayerColor, position: 'upper' | 'lower') => {
     const active = started && !finished && game.turn === color && !drawOffer && !takebackOffer && !promotion;
     const canRequestTakeback = started && !finished && game.turn !== color &&
@@ -269,6 +331,7 @@ function App() {
         <div className="action-player">
           <span className={`side-mark ${color}`} aria-hidden="true" />
           <div><strong>{labelColor(color)}</strong><small>{active ? 'Am Zug' : position === 'upper' ? 'Gegenüber' : 'Deine Seite'}</small></div>
+          {timeControl && <span className={`clock-readout ${game.turn === color ? 'clock-active' : ''}`} data-testid={`clock-${labelColor(color).toLowerCase()}`}>{formatClock(clockTimes[color])}</span>}
         </div>
         <div className="action-buttons">
           <button type="button" className="action-button draw-button" onClick={() => setDrawOffer(color)} disabled={!active} data-testid={`button-draw-${labelColor(color).toLowerCase()}`} aria-label={`${labelColor(color)} bietet Remis an`}>
@@ -304,14 +367,19 @@ function App() {
 
         <section className="intro-row" aria-label="Partie">
           <div><div className="eyebrow">Zu zweit am selben Brett</div><h1 className="title">{!started ? 'Ein Brett. Zwei Perspektiven.' : finished ? statusCopy(game) : 'Das Brett ist bereit.'}</h1></div>
-          <div className="match-meta">PARTIE OHNE ZEITLIMIT<strong>Partie 01&nbsp; · &nbsp;Ohne Uhr</strong></div>
+          <div className="match-meta">ZEITKONTROLLE<strong>{timeControl ? `${timeControl.initialMinutes} Min. + ${timeControl.incrementSeconds} Sek./Zug` : 'Ohne Zeitlimit'}</strong></div>
         </section>
 
         <div className="game-layout">
           <section className="board-column" aria-label="Spielbrett">
             <div className="turn-banner" role="status" aria-live="polite" data-testid="status-turn">
               <div className="turn-info"><span className={`turn-dot ${game.turn}`} aria-hidden="true" /><div><div className="turn-label">{finished ? statusCopy(game) : !started ? 'Bereit für den ersten Zug' : `${labelColor(game.turn)} ist am Zug`}</div><div className="turn-caption">{finished ? 'Partie beendet' : game.checkedPlayer ? 'Der König ist bedroht' : !started ? 'Startet die Partie gemeinsam' : 'Figur wählen, um zu ziehen'}</div></div></div>
-              <span className={`turn-chip ${game.checkedPlayer || finished ? 'alert' : ''}`}>{game.checkedPlayer ? 'Schess' : finished ? 'Ende' : `Zug ${currentNumber}`}</span>
+              <div className="turn-tools">
+                <button type="button" className="clock-settings-button" onClick={openClockSettings} disabled={finished} data-testid="button-clock-settings" aria-label="Zeitbeschränkung einstellen">
+                  <Clock size={15} aria-hidden="true" /><span>{timeControl ? `${timeControl.initialMinutes}+${timeControl.incrementSeconds}` : 'Uhr'}</span>
+                </button>
+                <span className={`turn-chip ${game.checkedPlayer || finished ? 'alert' : ''}`}>{game.checkedPlayer ? 'Schess' : finished ? 'Ende' : `Zug ${currentNumber}`}</span>
+              </div>
             </div>
 
             {actionBar('red', 'upper')}
@@ -397,30 +465,37 @@ function App() {
           <aside className="side-panel" aria-label="Partiedetails">
             <div className="side-perspective black-perspective" aria-label="Anzeige für Schwarz">
               <CapturedPanel perspective="red" net={material.net} turn={game.turn} started={started} finished={finished} winner={game.winner} materialDifference={material.difference} />
-              <RulesPanel view="black" />
             </div>
-            <section className="panel history-panel" aria-label="Zugverlauf">
-              <div className="panel-head"><div className="panel-title">Zugverlauf</div><div className="panel-kicker">{history.length} {history.length === 1 ? 'Zug' : 'Züge'}</div></div>
-              {history.length ? <div className="move-list" role="list" data-testid="list-move-history">
-                {Array.from({ length: Math.ceil(history.length / 2) }, (_, pairIndex) => {
-                  const whiteMove = history[pairIndex * 2];
-                  const blackMove = history[pairIndex * 2 + 1];
-                  return <div className="move-row" role="listitem" key={pairIndex}><span className="move-number">{String(pairIndex + 1).padStart(2, '0')}</span>
-                    {[whiteMove, blackMove].map((move, slot) => move ? <span className={`move-entry ${pairIndex === Math.floor((history.length - 1) / 2) && ((history.length - 1) % 2) === slot ? 'current' : ''}`} key={`${move.piece.id}-${slot}`}>
-                      <i className={`move-color ${move.piece.color}`} aria-hidden="true" /><span>{pieceShort[move.piece.type]} {squareName(move.from)}–{squareName(move.to)}{move.promotion ? `=${pieceShort[move.promotion]}` : ''}{move.captured ? ' ×' : ''}{move.special && <small className="move-special">{specialMoveLabel(move.special)}</small>}</span>
-                    </span> : <span key="waiting" />)}
-                  </div>;
-                })}
-              </div> : <div className="empty-history" data-testid="empty-move-history"><strong>Der erste Zug steht noch aus.</strong>Wähle eine Figur und ziehe sie auf ein markiertes Feld.</div>}
-            </section>
             <div className="side-perspective white-perspective" aria-label="Anzeige für Weiß">
               <CapturedPanel perspective="blue" net={material.net} turn={game.turn} started={started} finished={finished} winner={game.winner} materialDifference={material.difference} />
-              <RulesPanel view="white" />
             </div>
           </aside>
         </div>
-        <footer className="footer-note">Ein Brett · Zwei Spieler · Ohne Zeitdruck</footer>
+        <footer className="footer-note">Ein Brett · Zwei Spieler · {timeControl ? 'Zeit läuft' : 'Ohne Zeitdruck'}</footer>
       </div>
+
+      {clockDialogOpen && <div className="modal-backdrop" role="dialog" aria-modal="true" aria-labelledby="clock-title" data-testid="dialog-clock-settings">
+        <section className="clock-dialog">
+          <button type="button" className="clock-close" aria-label="Schließen" onClick={() => setClockDialogOpen(false)}><X size={18} /></button>
+          <span className="clock-dialog-icon"><Clock size={20} /></span>
+          <span className="eyebrow">Zeitkontrolle für beide Spieler</span>
+          <h2 id="clock-title">Zeitbeschränkung</h2>
+          <label className="clock-minutes-label" htmlFor="clock-minutes">Zeit von Beginn an</label>
+          <div className="clock-minute-input"><input id="clock-minutes" type="number" min={1} max={100} value={draftMinutes} onChange={(event) => setDraftMinutes(Math.max(1, Math.min(100, Number(event.currentTarget.value) || 1)))} data-testid="input-clock-minutes" /><span>Minuten</span></div>
+          <div className="clock-presets" aria-label="Häufig genutzte Zeiten">
+            {timePresets.map((preset) => <button type="button" key={preset.minutes} className={`clock-preset ${draftMinutes === preset.minutes ? 'selected' : ''}`} onClick={() => setDraftMinutes(preset.minutes)} aria-label={`${preset.minutes} Minuten, ${preset.name}`} data-testid={`preset-clock-${preset.minutes}`}>
+              <strong>{preset.minutes}</strong><span aria-hidden="true">{preset.symbol}</span>
+            </button>)}
+          </div>
+          <label className="clock-increment-label" htmlFor="clock-increment">Extrazeit pro Zug <strong>{draftIncrement} Sek.</strong></label>
+          <input id="clock-increment" className="clock-slider" type="range" min={0} max={10} step={1} value={draftIncrement} onChange={(event) => setDraftIncrement(Number(event.currentTarget.value))} data-testid="slider-clock-increment" />
+          <div className="clock-range-labels"><span>0 Sek.</span><span>10 Sek.</span></div>
+          <div className="clock-dialog-actions">
+            <button type="button" className="no-clock-button" onClick={removeClock} data-testid="button-no-clock">Keine Zeitbeschränkung</button>
+            <button type="button" className="confirm-clock-button" onClick={applyClockSettings} data-testid="button-set-clock">Zeitbeschränkung einstellen</button>
+          </div>
+        </section>
+      </div>}
 
       {promotion && <div className="modal-backdrop" role="dialog" aria-modal="true" aria-labelledby="promotion-title" data-testid="dialog-promotion">
         <div className={`promotion-dialog ${promotion.color === 'red' ? 'black-facing' : ''}`}><span className="eyebrow">Bauer auf der letzten Reihe</span><h2 id="promotion-title">Wähle eine Beförderung</h2><p>Deine Figur wird erst nach der Auswahl aufgewertet.</p>

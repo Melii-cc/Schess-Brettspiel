@@ -477,3 +477,124 @@
   .action-button { gap:4px; padding:7px 3px; font-size:9px; }
   .takeback-button svg { width:15px; }
 }
+
+/* Compact iPad landscape layout: keep the full board and both action bars in view. */
+@media (min-width:701px) and (max-width:1400px) and (max-height:1100px) {
+  .game-wrap { padding:9px 18px 12px; }
+  .topbar { padding-bottom:7px; }
+  .brand-mark { width:29px; height:29px; font-size:17px; }
+  .brand-name { font-size:21px; }
+  .brand-sub { font-size:8px; }
+  .intro-row { padding:7px 0 8px; gap:12px; }
+  .title { font-size:clamp(23px,2.6vw,32px); }
+  .match-meta { font-size:9px; }
+  .game-layout { grid-template-columns:minmax(0,1fr) 235px; gap:12px; }
+  .board-column { max-width:min(58vh, 890px); }
+  .turn-banner { min-height:42px; margin-bottom:4px; padding:0 9px; }
+  .turn-caption { display:none; }
+  .board-frame { padding:8px; }
+  .board-halves,.start-overlay,.result-overlay,.draw-overlay { inset:8px; }
+  .player-actions { min-height:45px; gap:4px; padding:4px 6px; }
+  .action-player { gap:7px; }
+  .action-player small { display:none; }
+  .action-player strong { font-size:11px; }
+  .side-mark { width:9px; height:9px; }
+  .action-buttons { gap:4px; }
+  .action-button { gap:4px; padding:6px 5px; font-size:9px; }
+  .action-button svg { width:13px; height:13px; }
+  .board-caption { margin-top:4px; font-size:8px; }
+  .footer-note { display:none; }
+  .side-panel,.side-perspective { gap:8px; }
+  .panel-head { padding:9px 10px 7px; }
+  .captured-player { padding:0 10px 6px; }
+  .captured-row { margin-left:25px; min-height:24px; gap:2px; }
+  .captured-piece { width:22px; height:24px; }
+}
+
+.turn-tools { display:flex; align-items:center; gap:10px; }
+.clock-settings-button {
+  min-height:31px;
+  display:inline-flex;
+  align-items:center;
+  justify-content:center;
+  gap:6px;
+  border:1px solid #c9c3b6;
+  border-radius:5px;
+  background:#f8f5ec;
+  color:#3c555d;
+  padding:5px 9px;
+  cursor:pointer;
+  font:600 10px var(--app-font-mono);
+}
+.clock-settings-button:hover:not(:disabled) { background:#fffdf6; }
+.clock-settings-button:disabled { opacity:.45; cursor:not-allowed; }
+.clock-readout {
+  margin-left:5px;
+  border:1px solid #d2cbbb;
+  border-radius:4px;
+  background:#eee9dd;
+  color:#69716e;
+  padding:3px 6px;
+  font:600 12px var(--app-font-mono);
+  font-variant-numeric:tabular-nums;
+}
+.clock-readout.clock-active { border-color:#8b9c90; background:#e0e9dc; color:#253e36; }
+.clock-dialog {
+  position:relative;
+  width:min(100%,520px);
+  padding:28px;
+  border:1px solid #d4cbb7;
+  border-radius:8px;
+  background:#f6f0e3;
+  color:#29343a;
+  box-shadow:0 22px 80px rgba(0,0,0,.32);
+  animation:enter .18s ease-out both;
+}
+.clock-close {
+  position:absolute;
+  top:12px;
+  right:12px;
+  width:34px;
+  height:34px;
+  display:grid;
+  place-items:center;
+  border:1px solid #d3c9b4;
+  border-radius:50%;
+  background:#eee8da;
+  color:#465154;
+  cursor:pointer;
+}
+.clock-dialog-icon { display:grid; place-items:center; width:39px; height:39px; margin-bottom:15px; border-radius:50%; background:#e4e9df; color:#365966; }
+.clock-dialog h2 { margin:6px 0 18px; font:700 27px var(--app-font-serif); }
+.clock-minutes-label,.clock-increment-label { display:flex; align-items:center; justify-content:space-between; color:#596367; font-size:12px; font-weight:700; }
+.clock-minute-input { display:flex; align-items:center; gap:9px; margin-top:7px; }
+.clock-minute-input input { width:100px; height:42px; border:1px solid #c9c1b2; border-radius:4px; background:#fffdf7; color:#29343a; padding:0 10px; font:600 18px var(--app-font-mono); }
+.clock-minute-input span { color:#77766e; font-size:12px; }
+.clock-presets { display:grid; grid-template-columns:repeat(6,minmax(0,1fr)); gap:7px; margin:12px 0 22px; }
+.clock-preset { min-height:46px; display:flex; flex-direction:row; align-items:center; justify-content:center; gap:5px; border:1px solid #d3c9b4; border-radius:4px; background:#eee8da; color:#495356; cursor:pointer; }
+.clock-preset > span { font-size:16px; line-height:1; }
+.clock-preset strong { font:600 11px var(--app-font-mono); }
+.clock-preset:hover,.clock-preset.selected { border-color:#789087; background:#dfe7dc; color:#29443b; }
+.clock-increment-label strong { color:#365966; font:600 12px var(--app-font-mono); }
+.clock-slider { width:100%; margin:15px 0 2px; accent-color:#365966; cursor:pointer; }
+.clock-range-labels { display:flex; justify-content:space-between; color:#898477; font:9px var(--app-font-mono); }
+.clock-dialog-actions { display:flex; align-items:center; justify-content:space-between; gap:10px; margin-top:24px; }
+.no-clock-button,.confirm-clock-button { min-height:40px; border-radius:4px; padding:9px 12px; cursor:pointer; font-size:11px; font-weight:700; }
+.no-clock-button { border:1px solid #c9c1b2; background:transparent; color:#596367; }
+.confirm-clock-button { border:1px solid #365966; background:#365966; color:#fff8ee; }
+.clock-close:focus-visible,.clock-preset:focus-visible,.clock-dialog button:focus-visible,.clock-dialog input:focus-visible { outline:3px solid #dba848; outline-offset:2px; }
+@media(max-width:700px) {
+  .turn-banner { gap:5px; padding-inline:9px; }
+  .turn-tools { gap:6px; }
+  .clock-settings-button { min-height:30px; padding:5px 7px; }
+  .clock-readout { margin-left:1px; padding:3px 4px; font-size:10px; }
+  .clock-dialog { padding:24px 18px 18px; }
+  .clock-presets { gap:4px; }
+  .clock-preset { min-height:46px; gap:3px; }
+  .clock-preset > span { font-size:14px; }
+}
+@media(max-width:430px) {
+  .clock-settings-button span { display:none; }
+  .clock-dialog-actions { align-items:stretch; flex-direction:column-reverse; }
+  .no-clock-button,.confirm-clock-button { width:100%; }
+}
